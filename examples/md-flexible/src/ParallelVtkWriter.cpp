@@ -11,6 +11,7 @@
 #include <limits>
 #include <string>
 #include <utility>
+#include <lean_vtk.hpp>
 
 #include "autopas/utils/WrapMPI.h"
 
@@ -78,7 +79,7 @@ void ParallelVtkWriter::recordParticleStates(size_t currentIteration,
 
   // print velocities
   timestepFile
-      << "        <DataArray Name=\"velocities\" NumberOfComponents=\"3\" format=\"ascii\" type=\"Float32\">\n";
+      << "        <DataArray Name=\"velocities\" NumberOfComponents=\"3\" format=\"ascii\" type=\"Float64\">\n";
   for (auto particle = autoPasContainer.begin(autopas::IteratorBehavior::owned); particle.isValid(); ++particle) {
     const auto v = particle->getV();
     timestepFile << "        " << v[0] << " " << v[1] << " " << v[2] << "\n";
@@ -86,7 +87,7 @@ void ParallelVtkWriter::recordParticleStates(size_t currentIteration,
   timestepFile << "        </DataArray>\n";
 
   // print forces
-  timestepFile << "        <DataArray Name=\"forces\" NumberOfComponents=\"3\" format=\"ascii\" type=\"Float32\">\n";
+  timestepFile << "        <DataArray Name=\"forces\" NumberOfComponents=\"3\" format=\"ascii\" type=\"Float64\">\n";
   for (auto particle = autoPasContainer.begin(autopas::IteratorBehavior::owned); particle.isValid(); ++particle) {
     const auto f = particle->getF();
     timestepFile << "        " << f[0] << " " << f[1] << " " << f[2] << "\n";
@@ -96,7 +97,7 @@ void ParallelVtkWriter::recordParticleStates(size_t currentIteration,
 #if MD_FLEXIBLE_MODE == MULTISITE
   // print quaternions
   timestepFile
-      << "        <DataArray Name=\"quaternions\" NumberOfComponents=\"4\" format=\"ascii\" type=\"Float32\">\n";
+      << "        <DataArray Name=\"quaternions\" NumberOfComponents=\"4\" format=\"ascii\" type=\"Float64\">\n";
   for (auto particle = autoPasContainer.begin(autopas::IteratorBehavior::owned); particle.isValid(); ++particle) {
     const auto q = particle->getQuaternion();
     timestepFile << "        " << q[0] << " " << q[1] << " " << q[2] << " " << q[3] << "\n";
@@ -105,7 +106,7 @@ void ParallelVtkWriter::recordParticleStates(size_t currentIteration,
 
   // print angular velocities
   timestepFile
-      << "        <DataArray Name=\"angularVelocities\" NumberOfComponents=\"3\" format=\"ascii\" type=\"Float32\">\n";
+      << "        <DataArray Name=\"angularVelocities\" NumberOfComponents=\"3\" format=\"ascii\" type=\"Float64\">\n";
   for (auto particle = autoPasContainer.begin(autopas::IteratorBehavior::owned); particle.isValid(); ++particle) {
     const auto angVel = particle->getAngularVel();
     timestepFile << "        " << angVel[0] << " " << angVel[1] << " " << angVel[2] << "\n";
@@ -113,7 +114,7 @@ void ParallelVtkWriter::recordParticleStates(size_t currentIteration,
   timestepFile << "        </DataArray>\n";
 
   // print torques
-  timestepFile << "        <DataArray Name=\"torques\" NumberOfComponents=\"3\" format=\"ascii\" type=\"Float32\">\n";
+  timestepFile << "        <DataArray Name=\"torques\" NumberOfComponents=\"3\" format=\"ascii\" type=\"Float64\">\n";
   for (auto particle = autoPasContainer.begin(autopas::IteratorBehavior::owned); particle.isValid(); ++particle) {
     const auto torque = particle->getTorque();
     timestepFile << "        " << torque[0] << " " << torque[1] << " " << torque[2] << "\n";
@@ -140,7 +141,7 @@ void ParallelVtkWriter::recordParticleStates(size_t currentIteration,
   timestepFile << "      <Points>\n";
 
   // print positions
-  timestepFile << "        <DataArray Name=\"positions\" NumberOfComponents=\"3\" format=\"ascii\" type=\"Float32\">\n";
+  timestepFile << "        <DataArray Name=\"positions\" NumberOfComponents=\"3\" format=\"ascii\" type=\"Float64\">\n";
   const auto boxMax = autoPasContainer.getBoxMax();
   for (auto particle = autoPasContainer.begin(autopas::IteratorBehavior::owned); particle.isValid(); ++particle) {
     // When we write to the file in ASCII, values are rounded to the precision of the filestream.
@@ -192,7 +193,7 @@ void ParallelVtkWriter::recordParticleStates(size_t currentIteration,
 
   timestepFile << "      </Points>\n";
   timestepFile << "      <Cells>\n";
-  timestepFile << "        <DataArray Name=\"types\" NumberOfComponents=\"0\" format=\"ascii\" type=\"Float32\"/>\n";
+  timestepFile << "        <DataArray Name=\"types\" NumberOfComponents=\"0\" format=\"ascii\" type=\"Float64\"/>\n";
   timestepFile << "      </Cells>\n";
   timestepFile << "    </Piece>\n";
   timestepFile << "  </UnstructuredGrid>\n";
@@ -242,7 +243,7 @@ void ParallelVtkWriter::recordDomainSubdivision(
   printDataArray(decomposition.getDomainIndex(), "Int32", "DomainId");
 
   // General Configuration information
-  printDataArray(autoPasConfigurations.begin()->second.get().cellSizeFactor, "Float32", "CellSizeFactor");
+  printDataArray(autoPasConfigurations.begin()->second.get().cellSizeFactor, "Float64", "CellSizeFactor");
   printDataArray(static_cast<int>(autoPasConfigurations.begin()->second.get().container), "Int32", "Container");
 
   // Pairwise Configuration
@@ -265,7 +266,7 @@ void ParallelVtkWriter::recordDomainSubdivision(
   printDataArray(_mpiRank, "Int32", "Rank");
   timestepFile << "      </CellData>\n";
   timestepFile << "      <Points>\n";
-  timestepFile << "        <DataArray type=\"Float32\" NumberOfComponents=\"3\" format=\"ascii\">\n";
+  timestepFile << "        <DataArray type=\"Float64\" NumberOfComponents=\"3\" format=\"ascii\">\n";
   timestepFile << "          " << localBoxMin[0] << " " << localBoxMin[1] << " " << localBoxMin[2] << "\n";
   timestepFile << "          " << localBoxMin[0] << " " << localBoxMin[1] << " " << localBoxMax[2] << "\n";
   timestepFile << "          " << localBoxMin[0] << " " << localBoxMax[1] << " " << localBoxMin[2] << "\n";
@@ -323,24 +324,24 @@ void ParallelVtkWriter::createParticlesPvtuFile(size_t currentIteration) const {
   timestepFile << "  <PUnstructuredGrid GhostLevel=\"0\">\n";
   timestepFile << "    <PPointData>\n";
   timestepFile
-      << "      <PDataArray Name=\"velocities\" NumberOfComponents=\"3\" format=\"ascii\" type=\"Float32\"/>\n";
-  timestepFile << "      <PDataArray Name=\"forces\" NumberOfComponents=\"3\" format=\"ascii\" type=\"Float32\"/>\n";
+      << "      <PDataArray Name=\"velocities\" NumberOfComponents=\"3\" format=\"ascii\" type=\"Float64\"/>\n";
+  timestepFile << "      <PDataArray Name=\"forces\" NumberOfComponents=\"3\" format=\"ascii\" type=\"Float64\"/>\n";
 #if MD_FLEXIBLE_MODE == MULTISITE
   timestepFile
-      << "      <PDataArray Name=\"quaternions\" NumberOfComponents=\"4\" format=\"ascii\" type=\"Float32\"/>\n";
+      << "      <PDataArray Name=\"quaternions\" NumberOfComponents=\"4\" format=\"ascii\" type=\"Float64\"/>\n";
   timestepFile
-      << "      <PDataArray Name=\"angularVelocities\" NumberOfComponents=\"3\" format=\"ascii\" type=\"Float32\"/>\n";
-  timestepFile << "      <PDataArray Name=\"torques\" NumberOfComponents=\"3\" format=\"ascii\" type=\"Float32\"/>\n";
+      << "      <PDataArray Name=\"angularVelocities\" NumberOfComponents=\"3\" format=\"ascii\" type=\"Float64\"/>\n";
+  timestepFile << "      <PDataArray Name=\"torques\" NumberOfComponents=\"3\" format=\"ascii\" type=\"Float64\"/>\n";
 #endif
   timestepFile << "      <PDataArray Name=\"typeIds\" NumberOfComponents=\"1\" format=\"ascii\" type=\"Int32\"/>\n";
   timestepFile << "      <PDataArray Name=\"ids\" NumberOfComponents=\"1\" format=\"ascii\" type=\"Int32\"/>\n";
   timestepFile << "    </PPointData>\n";
   timestepFile << "    <PCellData/>\n";
   timestepFile << "    <PPoints>\n";
-  timestepFile << "      <PDataArray Name=\"positions\" NumberOfComponents=\"3\" format=\"ascii\" type=\"Float32\"/>\n";
+  timestepFile << "      <PDataArray Name=\"positions\" NumberOfComponents=\"3\" format=\"ascii\" type=\"Float64\"/>\n";
   timestepFile << "    </PPoints>\n";
   timestepFile << "    <PCells>\n";
-  timestepFile << "      <PDataArray Name=\"types\" NumberOfComponents=\"0\" format=\"ascii\" type=\"Float32\"/>\n";
+  timestepFile << "      <PDataArray Name=\"types\" NumberOfComponents=\"0\" format=\"ascii\" type=\"Float64\"/>\n";
   timestepFile << "    </PCells>\n";
 
   for (int i = 0; i < _numberOfRanks; ++i) {
@@ -377,7 +378,7 @@ void ParallelVtkWriter::createRanksPvtuFile(
   timestepFile << "      <PDataArray type=\"Int32\" Name=\"DomainId\" />\n";
 
   // General configuration options
-  timestepFile << "      <PDataArray type=\"Float32\" Name=\"CellSizeFactor\" />\n";
+  timestepFile << "      <PDataArray type=\"Float64\" Name=\"CellSizeFactor\" />\n";
   timestepFile << "      <PDataArray type=\"Int32\" Name=\"Container\" />\n";
 
   // Pairwise configuration
@@ -398,7 +399,7 @@ void ParallelVtkWriter::createRanksPvtuFile(
   timestepFile << "      <PDataArray type=\"Int32\" Name=\"Rank\" />\n";
   timestepFile << "    </PCellData>\n";
   timestepFile << "    <PPoints>\n";
-  timestepFile << "      <DataArray NumberOfComponents=\"3\" format=\"ascii\" type=\"Float32\">\n";
+  timestepFile << "      <DataArray NumberOfComponents=\"3\" format=\"ascii\" type=\"Float64\">\n";
   timestepFile << "        " << globalBoxMin[0] << " " << globalBoxMin[1] << " " << globalBoxMin[2] << "\n";
   timestepFile << "        " << globalBoxMax[0] << " " << globalBoxMin[1] << " " << globalBoxMin[2] << "\n";
   timestepFile << "        " << globalBoxMin[0] << " " << globalBoxMax[1] << " " << globalBoxMin[2] << "\n";
