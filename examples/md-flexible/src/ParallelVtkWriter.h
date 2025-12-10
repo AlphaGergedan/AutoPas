@@ -95,6 +95,20 @@ class ParallelVtkWriter {
   int _maximumNumberOfDigitsInIteration;
 
   /**
+   *  Writes .vtu or .pvtu file header to the given stream.
+   *  @param filename         Filename string with extension .vtu or .pvtu
+   *  @param timestepFile     Output file stream
+   */
+  void writeHeader(const std::string filename, std::ofstream &timestepFile) const;
+
+  /**
+   *  Writes .vtu or .pvtu file footer to the given stream.
+   *  @param filename         Filename string with extension .vtu or .pvtu
+   *  @param timestepFile     Output file stream
+   */
+  void writeFooter(const std::string filename, std::ofstream &timestepFile) const;
+
+  /**
    * Writes the current state of particles into vtk files.
    * @param currentIteration: The simulations current iteration.
    * @param autoPasContainer The AutoPas container whose owned particles will be logged.

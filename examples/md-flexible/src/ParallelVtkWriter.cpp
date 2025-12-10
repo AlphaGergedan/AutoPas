@@ -48,6 +48,28 @@ void ParallelVtkWriter::recordTimestep(size_t currentIteration, const autopas::A
   recordDomainSubdivision(currentIteration, currentConfig, decomposition);
 }
 
+void ParallelVtkWriter::writeHeader(std::string filename, std::ofstream &timestepFile)  const {
+  timestepFile << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?>\n";
+  // .pvtu extension uses P-prefix
+  if (filename.substr(filename.length() - 5) == ".pvtu") {
+    timestepFile << "<VTKFile byte_order=\"LittleEndian\" type=\"PUnstructuredGrid\" version=\"0.1\">\n";
+    timestepFile << "  <PUnstructuredGrid GhostLevel=\"0\">\n";
+  } else {
+    timestepFile << "<VTKFile byte_order=\"LittleEndian\" type=\"UnstructuredGrid\" version=\"0.1\">\n";
+    timestepFile << "  <UnstructuredGrid>\n";
+  }
+}
+
+void ParallelVtkWriter::writeFooter(std::string filename, std::ofstream &timestepFile)  const {
+  // .pvtu extension uses P-prefix
+  if (filename.substr(filename.length() - 5) == ".pvtu") {
+    timestepFile << "  </PUnstructuredGrid>\n";
+  } else {
+    timestepFile << "  </UnstructuredGrid>\n";
+  }
+  timestepFile << "</VTKFile>\n";
+}
+
 /**
  * @todo: Currently this function runs over all the particles for each property separately.
  * This can be improved by using multiple string streams (one for each property).
@@ -71,9 +93,7 @@ void ParallelVtkWriter::recordParticleStates(size_t currentIteration,
 
   const auto numberOfParticles = autoPasContainer.getNumberOfParticles(autopas::IteratorBehavior::owned);
 
-  timestepFile << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?>\n";
-  timestepFile << "<VTKFile byte_order=\"LittleEndian\" type=\"UnstructuredGrid\" version=\"0.1\">\n";
-  timestepFile << "  <UnstructuredGrid>\n";
+  writeHeader(timestepFileName.str(), timestepFile);
   timestepFile << "    <Piece NumberOfCells=\"0\" NumberOfPoints=\"" << numberOfParticles << "\">\n";
   timestepFile << "      <PointData>\n";
 
@@ -144,50 +164,8 @@ void ParallelVtkWriter::recordParticleStates(size_t currentIteration,
   timestepFile << "        <DataArray Name=\"positions\" NumberOfComponents=\"3\" format=\"ascii\" type=\"Float64\">\n";
   const auto boxMax = autoPasContainer.getBoxMax();
   for (auto particle = autoPasContainer.begin(autopas::IteratorBehavior::owned); particle.isValid(); ++particle) {
-    // When we write to the file in ASCII, values are rounded to the precision of the filestream.
-    // Since a higher precision results in larger files because more characters are written,
-    // and mdflex is not intended as a perfectly precice tool for application scientists,
-    // we are fine with the rather low default precision.
-    // However, if a particle is very close to the domain border it can happen that the particle position is rounded
-    // exactly to the boundary position. This then causes problems when the checkpoint is loaded because boxMax is
-    // considered to be not part of the domain, hence such a particle would not be loaded and thus be lost.
-    // This function identifies these problematic values and raises the write precision just for this value high enough
-    // to be distinguishable from the boundary.
-    const auto writeWithDynamicPrecision = [&](double position, double border) {
-      const auto initialPrecision = timestepFile.precision();
-      // Simple and cheap check if we even need to do anything.
-      if (border - position < 0.1) {
-        using autopas::utils::Math::roundFloating;
-        using autopas::utils::Math::isNearAbs;
-        // As long as the used precision results in the two values being indistinguishable increase the precision
-        while (isNearAbs(roundFloating(position, timestepFile.precision()), border,
-                         std::pow(10, -timestepFile.precision()))) {
-          timestepFile << std::setprecision(timestepFile.precision() + 1);
-          // Abort if the numbers are indistinguishable beyond machine precision
-          constexpr auto machinePrecision = std::numeric_limits<double>::digits10;
-          if (timestepFile.precision() > machinePrecision) {
-            throw std::runtime_error(
-                "ParallelVtkWriter::writeWithDynamicPrecision(): "
-                "The two given numbers are identical up to " +
-                std::to_string(machinePrecision) +
-                " digits of precision!\n"
-                "Number: " +
-                std::to_string(position) + "\n" + particle->toString());
-          }
-        }
-      }
-      // Write with the new precision and then reset it
-      timestepFile << position << std::setprecision(initialPrecision);
-    };
-
     const auto pos = particle->getR();
-    timestepFile << "        ";
-    writeWithDynamicPrecision(pos[0], boxMax[0]);
-    timestepFile << " ";
-    writeWithDynamicPrecision(pos[1], boxMax[1]);
-    timestepFile << " ";
-    writeWithDynamicPrecision(pos[2], boxMax[2]);
-    timestepFile << "\n";
+    timestepFile << "        " << pos[0] << " " << pos[1] << " " << pos[2] << "\n";
   }
   timestepFile << "        </DataArray>\n";
 
@@ -196,8 +174,7 @@ void ParallelVtkWriter::recordParticleStates(size_t currentIteration,
   timestepFile << "        <DataArray Name=\"types\" NumberOfComponents=\"0\" format=\"ascii\" type=\"Float64\"/>\n";
   timestepFile << "      </Cells>\n";
   timestepFile << "    </Piece>\n";
-  timestepFile << "  </UnstructuredGrid>\n";
-  timestepFile << "</VTKFile>\n";
+  writeFooter(timestepFileName.str(), timestepFile);
 
   timestepFile.close();
 }
@@ -235,9 +212,7 @@ void ParallelVtkWriter::recordDomainSubdivision(
     timestepFile << "        </DataArray>\n";
   };
 
-  timestepFile << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?>\n";
-  timestepFile << "<VTKFile byte_order=\"LittleEndian\" type=\"UnstructuredGrid\" version=\"0.1\">\n";
-  timestepFile << "  <UnstructuredGrid>\n";
+  writeHeader(timestepFileName.str(), timestepFile);
   timestepFile << "    <Piece NumberOfPoints=\"8\" NumberOfCells=\"1\">\n";
   timestepFile << "      <CellData>\n";
   printDataArray(decomposition.getDomainIndex(), "Int32", "DomainId");
@@ -319,9 +294,7 @@ void ParallelVtkWriter::createParticlesPvtuFile(size_t currentIteration) const {
     throw std::runtime_error("Simulation::writeVTKFile(): Failed to open file \"" + filename.str() + "\"");
   }
 
-  timestepFile << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?>\n";
-  timestepFile << "<VTKFile byte_order=\"LittleEndian\" type=\"PUnstructuredGrid\" version=\"0.1\">\n";
-  timestepFile << "  <PUnstructuredGrid GhostLevel=\"0\">\n";
+  writeHeader(filename.str(), timestepFile);
   timestepFile << "    <PPointData>\n";
   timestepFile
       << "      <PDataArray Name=\"velocities\" NumberOfComponents=\"3\" format=\"ascii\" type=\"Float64\"/>\n";
@@ -370,9 +343,7 @@ void ParallelVtkWriter::createRanksPvtuFile(
   }
   const auto &globalBoxMin = decomposition.getGlobalBoxMin();
   const auto &globalBoxMax = decomposition.getGlobalBoxMax();
-  timestepFile << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?>\n";
-  timestepFile << "<VTKFile byte_order=\"LittleEndian\" type=\"PUnstructuredGrid\" version=\"0.1\">\n";
-  timestepFile << "  <PUnstructuredGrid GhostLevel=\"0\">\n";
+  writeHeader(filename.str(), timestepFile);
   timestepFile << "    <PPointData/>\n";
   timestepFile << "    <PCellData>\n";
   timestepFile << "      <PDataArray type=\"Int32\" Name=\"DomainId\" />\n";
