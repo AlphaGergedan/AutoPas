@@ -95,6 +95,11 @@ class ParallelVtkWriter {
   int _maximumNumberOfDigitsInIteration;
 
   /**
+   * Specifies iterator type for particles
+   */
+  autopas::IteratorBehavior _iteratorBehavior;
+
+  /**
    *  Writes .vtu or .pvtu file header to the given stream.
    *  @param filename         Filename string with extension .vtu or .pvtu
    *  @param timestepFile     Output file stream
