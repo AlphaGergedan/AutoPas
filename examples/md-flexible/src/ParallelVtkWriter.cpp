@@ -39,6 +39,8 @@ ParallelVtkWriter::ParallelVtkWriter(std::string sessionName, const std::string 
   autopas::AutoPas_MPI_Bcast(_sessionFolderPath.data(), sessionFolderPathLength, AUTOPAS_MPI_CHAR, 0,
                              AUTOPAS_MPI_COMM_WORLD);
   autopas::AutoPas_MPI_Bcast(_dataFolderPath.data(), dataFolderPathLength, AUTOPAS_MPI_CHAR, 0, AUTOPAS_MPI_COMM_WORLD);
+
+  _iteratorBehavior = autopas::IteratorBehavior::ownedOrHalo;
 }
 
 void ParallelVtkWriter::recordTimestep(size_t currentIteration, const autopas::AutoPas<ParticleType> &autoPasContainer,
@@ -91,7 +93,7 @@ void ParallelVtkWriter::recordParticleStates(size_t currentIteration,
     throw std::runtime_error("Simulation::writeVTKFile(): Failed to open file \"" + timestepFileName.str() + "\"");
   }
 
-  const auto numberOfParticles = autoPasContainer.getNumberOfParticles(autopas::IteratorBehavior::owned);
+  const auto numberOfParticles = autoPasContainer.getNumberOfParticles(_iteratorBehavior);
 
   writeHeader(timestepFileName.str(), timestepFile);
   timestepFile << "    <Piece NumberOfCells=\"0\" NumberOfPoints=\"" << numberOfParticles << "\">\n";
@@ -100,7 +102,7 @@ void ParallelVtkWriter::recordParticleStates(size_t currentIteration,
   // print velocities
   timestepFile
       << "        <DataArray Name=\"velocities\" NumberOfComponents=\"3\" format=\"ascii\" type=\"Float64\">\n";
-  for (auto particle = autoPasContainer.begin(autopas::IteratorBehavior::owned); particle.isValid(); ++particle) {
+  for (auto particle = autoPasContainer.begin(_iteratorBehavior); particle.isValid(); ++particle) {
     const auto v = particle->getV();
     timestepFile << "        " << v[0] << " " << v[1] << " " << v[2] << "\n";
   }
@@ -108,7 +110,7 @@ void ParallelVtkWriter::recordParticleStates(size_t currentIteration,
 
   // print forces
   timestepFile << "        <DataArray Name=\"forces\" NumberOfComponents=\"3\" format=\"ascii\" type=\"Float64\">\n";
-  for (auto particle = autoPasContainer.begin(autopas::IteratorBehavior::owned); particle.isValid(); ++particle) {
+  for (auto particle = autoPasContainer.begin(_iteratorBehavior); particle.isValid(); ++particle) {
     const auto f = particle->getF();
     timestepFile << "        " << f[0] << " " << f[1] << " " << f[2] << "\n";
   }
@@ -118,7 +120,7 @@ void ParallelVtkWriter::recordParticleStates(size_t currentIteration,
   // print quaternions
   timestepFile
       << "        <DataArray Name=\"quaternions\" NumberOfComponents=\"4\" format=\"ascii\" type=\"Float64\">\n";
-  for (auto particle = autoPasContainer.begin(autopas::IteratorBehavior::owned); particle.isValid(); ++particle) {
+  for (auto particle = autoPasContainer.begin(_iteratorBehavior); particle.isValid(); ++particle) {
     const auto q = particle->getQuaternion();
     timestepFile << "        " << q[0] << " " << q[1] << " " << q[2] << " " << q[3] << "\n";
   }
@@ -127,7 +129,7 @@ void ParallelVtkWriter::recordParticleStates(size_t currentIteration,
   // print angular velocities
   timestepFile
       << "        <DataArray Name=\"angularVelocities\" NumberOfComponents=\"3\" format=\"ascii\" type=\"Float64\">\n";
-  for (auto particle = autoPasContainer.begin(autopas::IteratorBehavior::owned); particle.isValid(); ++particle) {
+  for (auto particle = autoPasContainer.begin(_iteratorBehavior); particle.isValid(); ++particle) {
     const auto angVel = particle->getAngularVel();
     timestepFile << "        " << angVel[0] << " " << angVel[1] << " " << angVel[2] << "\n";
   }
@@ -135,7 +137,7 @@ void ParallelVtkWriter::recordParticleStates(size_t currentIteration,
 
   // print torques
   timestepFile << "        <DataArray Name=\"torques\" NumberOfComponents=\"3\" format=\"ascii\" type=\"Float64\">\n";
-  for (auto particle = autoPasContainer.begin(autopas::IteratorBehavior::owned); particle.isValid(); ++particle) {
+  for (auto particle = autoPasContainer.begin(_iteratorBehavior); particle.isValid(); ++particle) {
     const auto torque = particle->getTorque();
     timestepFile << "        " << torque[0] << " " << torque[1] << " " << torque[2] << "\n";
   }
@@ -144,14 +146,14 @@ void ParallelVtkWriter::recordParticleStates(size_t currentIteration,
 
   // print type ids
   timestepFile << "        <DataArray Name=\"typeIds\" NumberOfComponents=\"1\" format=\"ascii\" type=\"Int32\">\n";
-  for (auto particle = autoPasContainer.begin(autopas::IteratorBehavior::owned); particle.isValid(); ++particle) {
+  for (auto particle = autoPasContainer.begin(_iteratorBehavior); particle.isValid(); ++particle) {
     timestepFile << "        " << particle->getTypeId() << "\n";
   }
   timestepFile << "        </DataArray>\n";
 
   // print ids
   timestepFile << "        <DataArray Name=\"ids\" NumberOfComponents=\"1\" format=\"ascii\" type=\"Int32\">\n";
-  for (auto particle = autoPasContainer.begin(autopas::IteratorBehavior::owned); particle.isValid(); ++particle) {
+  for (auto particle = autoPasContainer.begin(_iteratorBehavior); particle.isValid(); ++particle) {
     timestepFile << "        " << particle->getID() << "\n";
   }
   timestepFile << "        </DataArray>\n";
@@ -163,7 +165,7 @@ void ParallelVtkWriter::recordParticleStates(size_t currentIteration,
   // print positions
   timestepFile << "        <DataArray Name=\"positions\" NumberOfComponents=\"3\" format=\"ascii\" type=\"Float64\">\n";
   const auto boxMax = autoPasContainer.getBoxMax();
-  for (auto particle = autoPasContainer.begin(autopas::IteratorBehavior::owned); particle.isValid(); ++particle) {
+  for (auto particle = autoPasContainer.begin(_iteratorBehavior); particle.isValid(); ++particle) {
     const auto pos = particle->getR();
     timestepFile << "        " << pos[0] << " " << pos[1] << " " << pos[2] << "\n";
   }
