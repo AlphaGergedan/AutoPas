@@ -3,7 +3,7 @@ include(autopas_spdlog)
 include(autopas_harmony)
 include(autopas_eigen)
 include(autopas_pmt)
-include(autopas_lean-vtk)
+#include(autopas_lean-vtk)
 
 add_subdirectory(fake-dlclose)
 

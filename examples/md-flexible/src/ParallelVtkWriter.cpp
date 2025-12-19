@@ -11,7 +11,7 @@
 #include <limits>
 #include <string>
 #include <utility>
-#include <lean_vtk.hpp>
+//#include <lean_vtk.hpp>
 
 #include "autopas/utils/WrapMPI.h"
 
@@ -40,7 +40,7 @@ ParallelVtkWriter::ParallelVtkWriter(std::string sessionName, const std::string 
                              AUTOPAS_MPI_COMM_WORLD);
   autopas::AutoPas_MPI_Bcast(_dataFolderPath.data(), dataFolderPathLength, AUTOPAS_MPI_CHAR, 0, AUTOPAS_MPI_COMM_WORLD);
 
-  _iteratorBehavior = autopas::IteratorBehavior::ownedOrHalo;
+  _iteratorBehavior = autopas::IteratorBehavior::owned;
 }
 
 void ParallelVtkWriter::recordTimestep(size_t currentIteration, const autopas::AutoPas<ParticleType> &autoPasContainer,
