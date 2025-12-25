@@ -13,6 +13,9 @@
 #include <utility>
 
 #include "autopas/utils/WrapMPI.h"
+#include "autopas/utils/Vtk.h"
+
+namespace Vtk = autopas::utils::Vtk;
 
 ParallelVtkWriter::ParallelVtkWriter(std::string sessionName, const std::string &outputFolder,
                                      const int &maximumNumberOfDigitsInIteration)
@@ -70,11 +73,9 @@ void ParallelVtkWriter::recordParticleStates(size_t currentIteration,
 
   const auto numberOfParticles = autoPasContainer.getNumberOfParticles(autopas::IteratorBehavior::owned);
 
-  timestepFile << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?>\n";
-  timestepFile << "<VTKFile byte_order=\"LittleEndian\" type=\"UnstructuredGrid\" version=\"0.1\">\n";
-  timestepFile << "  <UnstructuredGrid>\n";
-  timestepFile << "    <Piece NumberOfCells=\"0\" NumberOfPoints=\"" << numberOfParticles << "\">\n";
-  timestepFile << "      <PointData>\n";
+  Vtk::beginFile(timestepFile, Vtk::GridType::Unstructured);
+  Vtk::beginPiece(timestepFile, 0, numberOfParticles);
+  Vtk::beginSection(timestepFile, Vtk::Section::PointData);
 
   // print velocities
   timestepFile
@@ -136,7 +137,7 @@ void ParallelVtkWriter::recordParticleStates(size_t currentIteration,
   timestepFile << "        </DataArray>\n";
 
   timestepFile << "      </PointData>\n";
-  timestepFile << "      <CellData/>\n";
+  Vtk::addEmptySection(timestepFile, Vtk::Section::CellData);
   timestepFile << "      <Points>\n";
 
   // print positions
@@ -190,14 +191,14 @@ void ParallelVtkWriter::recordParticleStates(size_t currentIteration,
   }
   timestepFile << "        </DataArray>\n";
 
-  timestepFile << "      </Points>\n";
-  timestepFile << "      <Cells>\n";
-  timestepFile << "        <DataArray Name=\"types\" NumberOfComponents=\"0\" format=\"ascii\" type=\"Float32\"/>\n";
-  timestepFile << "      </Cells>\n";
-  timestepFile << "    </Piece>\n";
-  timestepFile << "  </UnstructuredGrid>\n";
-  timestepFile << "</VTKFile>\n";
+  Vtk::endSection(timestepFile, Vtk::Section::Points);
 
+  // TODO: Why not write empty section here?
+  Vtk::beginSection(timestepFile, Vtk::Section::Cells);
+  timestepFile << "        <DataArray Name=\"types\" NumberOfComponents=\"0\" format=\"ascii\" type=\"Float32\"/>\n";
+  Vtk::endSection(timestepFile, Vtk::Section::Cells);
+  Vtk::endSection(timestepFile, Vtk::Section::Piece);
+  Vtk::endFile(timestepFile, Vtk::GridType::Unstructured);
   timestepFile.close();
 }
 
@@ -227,6 +228,17 @@ void ParallelVtkWriter::recordDomainSubdivision(
 
   const std::array<double, 3> localBoxMin = decomposition.getLocalBoxMin();
   const std::array<double, 3> localBoxMax = decomposition.getLocalBoxMax();
+  // Construct box and then use data array writer
+  //const std::array<std::array<double, 3>, 8>  localBoxPoints {
+    //{ localBoxMin[0], localBoxMin[1], localBoxMin[2] },
+    //{ localBoxMin[0], localBoxMin[1], localBoxMax[2] },
+    //{ localBoxMin[0], localBoxMax[1], localBoxMin[2] },
+    //{ localBoxMin[0], localBoxMax[1], localBoxMax[2] },
+    //{ localBoxMax[0], localBoxMin[1], localBoxMin[2] },
+    //{ localBoxMax[0], localBoxMin[1], localBoxMax[2] },
+    //{ localBoxMax[0], localBoxMax[1], localBoxMin[2] },
+    //{ localBoxMax[0], localBoxMax[1], localBoxMax[2] },
+  //};
 
   auto printDataArray = [&](const auto &data, const std::string &type, const std::string &name) {
     timestepFile << "        <DataArray type=\"" << type << "\" Name=\"" << name << "\" format=\"ascii\">\n";
@@ -234,11 +246,9 @@ void ParallelVtkWriter::recordDomainSubdivision(
     timestepFile << "        </DataArray>\n";
   };
 
-  timestepFile << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?>\n";
-  timestepFile << "<VTKFile byte_order=\"LittleEndian\" type=\"UnstructuredGrid\" version=\"0.1\">\n";
-  timestepFile << "  <UnstructuredGrid>\n";
-  timestepFile << "    <Piece NumberOfPoints=\"8\" NumberOfCells=\"1\">\n";
-  timestepFile << "      <CellData>\n";
+  Vtk::beginFile(timestepFile, Vtk::GridType::Unstructured);
+  Vtk::beginPiece(timestepFile, 1, 8);
+  Vtk::beginSection(timestepFile, Vtk::Section::CellData);
   printDataArray(decomposition.getDomainIndex(), "Int32", "DomainId");
 
   // General Configuration information
@@ -263,8 +273,9 @@ void ParallelVtkWriter::recordDomainSubdivision(
   }
 
   printDataArray(_mpiRank, "Int32", "Rank");
-  timestepFile << "      </CellData>\n";
-  timestepFile << "      <Points>\n";
+  Vtk::endSection(timestepFile, Vtk::Section::CellData);
+
+  Vtk::beginSection(timestepFile, Vtk::Section::Points);
   timestepFile << "        <DataArray type=\"Float32\" NumberOfComponents=\"3\" format=\"ascii\">\n";
   timestepFile << "          " << localBoxMin[0] << " " << localBoxMin[1] << " " << localBoxMin[2] << "\n";
   timestepFile << "          " << localBoxMin[0] << " " << localBoxMin[1] << " " << localBoxMax[2] << "\n";
@@ -275,8 +286,9 @@ void ParallelVtkWriter::recordDomainSubdivision(
   timestepFile << "          " << localBoxMax[0] << " " << localBoxMax[1] << " " << localBoxMin[2] << "\n";
   timestepFile << "          " << localBoxMax[0] << " " << localBoxMax[1] << " " << localBoxMax[2] << "\n";
   timestepFile << "        </DataArray>\n";
-  timestepFile << "      </Points>\n";
-  timestepFile << "      <Cells>\n";
+  Vtk::endSection(timestepFile, Vtk::Section::Points);
+
+  Vtk::beginSection(timestepFile, Vtk::Section::Cells);
   timestepFile << "        <DataArray type=\"Int32\" Name=\"connectivity\" format=\"ascii\">\n";
   timestepFile << "          0 1 2 3 4 5 6 7\n";  // These indices refer to the Points DataArray above.
   timestepFile << "        </DataArray>\n";
@@ -286,11 +298,10 @@ void ParallelVtkWriter::recordDomainSubdivision(
   timestepFile << "        <DataArray type=\"UInt8\" Name=\"types\" format=\"ascii\">\n";
   timestepFile << "          11\n";  // = VTK_VOXEL
   timestepFile << "        </DataArray>\n";
-  timestepFile << "      </Cells>\n";
-  timestepFile << "    </Piece>\n";
-  timestepFile << "  </UnstructuredGrid>\n";
-  timestepFile << "</VTKFile>\n";
+  Vtk::endSection(timestepFile, Vtk::Section::Cells);
 
+  Vtk::endSection(timestepFile, Vtk::Section::Piece);
+  Vtk::endFile(timestepFile, Vtk::GridType::Unstructured);
   timestepFile.close();
 }
 
@@ -318,39 +329,39 @@ void ParallelVtkWriter::createParticlesPvtuFile(size_t currentIteration) const {
     throw std::runtime_error("Simulation::writeVTKFile(): Failed to open file \"" + filename.str() + "\"");
   }
 
-  timestepFile << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?>\n";
-  timestepFile << "<VTKFile byte_order=\"LittleEndian\" type=\"PUnstructuredGrid\" version=\"0.1\">\n";
-  timestepFile << "  <PUnstructuredGrid GhostLevel=\"0\">\n";
-  timestepFile << "    <PPointData>\n";
-  timestepFile
-      << "      <PDataArray Name=\"velocities\" NumberOfComponents=\"3\" format=\"ascii\" type=\"Float32\"/>\n";
-  timestepFile << "      <PDataArray Name=\"forces\" NumberOfComponents=\"3\" format=\"ascii\" type=\"Float32\"/>\n";
+  Vtk::beginFile(timestepFile, Vtk::GridType::ParallelUnstructured);
+
+  Vtk::beginSection(timestepFile, Vtk::Section::ParallelPointData);
+  Vtk::addParallelDataArray(timestepFile, Vtk::DataType::Float32, "velocities", 3, "ascii");
+  Vtk::addParallelDataArray(timestepFile, Vtk::DataType::Float32, "forces", 3, "ascii");
 #if MD_FLEXIBLE_MODE == MULTISITE
-  timestepFile
-      << "      <PDataArray Name=\"quaternions\" NumberOfComponents=\"4\" format=\"ascii\" type=\"Float32\"/>\n";
-  timestepFile
-      << "      <PDataArray Name=\"angularVelocities\" NumberOfComponents=\"3\" format=\"ascii\" type=\"Float32\"/>\n";
-  timestepFile << "      <PDataArray Name=\"torques\" NumberOfComponents=\"3\" format=\"ascii\" type=\"Float32\"/>\n";
+  Vtk::addParallelDataArray(timestepFile, Vtk::DataType::Float32, "quaternions", 4, "ascii");
+  Vtk::addParallelDataArray(timestepFile, Vtk::DataType::Float32, "angularVelocities", 3, "ascii");
+  Vtk::addParallelDataArray(timestepFile, Vtk::DataType::Float32, "torques", 3, "ascii");
 #endif
-  timestepFile << "      <PDataArray Name=\"typeIds\" NumberOfComponents=\"1\" format=\"ascii\" type=\"Int32\"/>\n";
-  timestepFile << "      <PDataArray Name=\"ids\" NumberOfComponents=\"1\" format=\"ascii\" type=\"Int32\"/>\n";
-  timestepFile << "    </PPointData>\n";
-  timestepFile << "    <PCellData/>\n";
-  timestepFile << "    <PPoints>\n";
-  timestepFile << "      <PDataArray Name=\"positions\" NumberOfComponents=\"3\" format=\"ascii\" type=\"Float32\"/>\n";
-  timestepFile << "    </PPoints>\n";
-  timestepFile << "    <PCells>\n";
-  timestepFile << "      <PDataArray Name=\"types\" NumberOfComponents=\"0\" format=\"ascii\" type=\"Float32\"/>\n";
-  timestepFile << "    </PCells>\n";
+  Vtk::addParallelDataArray(timestepFile, Vtk::DataType::Int32, "typeIds", 1, "ascii");
+  Vtk::addParallelDataArray(timestepFile, Vtk::DataType::Int32, "ids", 1, "ascii");
+  Vtk::endSection(timestepFile, Vtk::Section::ParallelPointData);
+
+  Vtk::addEmptySection(timestepFile, Vtk::Section::ParallelCellData);
+
+  Vtk::beginSection(timestepFile, Vtk::Section::ParallelPoints);
+  Vtk::addParallelDataArray(timestepFile, Vtk::DataType::Float32, "positions", 3, "ascii");
+  Vtk::endSection(timestepFile, Vtk::Section::ParallelPoints);
+
+  Vtk::beginSection(timestepFile, Vtk::Section::ParallelCells);
+  // FIXME: Why num. components is zero, maybe write empty cells section
+  Vtk::addParallelDataArray(timestepFile, Vtk::DataType::Float32, "types", 0, "ascii");
+  Vtk::endSection(timestepFile, Vtk::Section::ParallelCells);
 
   for (int i = 0; i < _numberOfRanks; ++i) {
-    timestepFile << "    <Piece Source=\"./data/" << _sessionName << "_Particles_" << i << "_" << std::setfill('0')
-                 << std::setw(_maximumNumberOfDigitsInIteration) << currentIteration << ".vtu\"/>\n";
+    std::stringstream pieceName;
+    pieceName << "./data/" << _sessionName << "_Particles_" << i << "_" << std::setfill('0')
+              << std::setw(_maximumNumberOfDigitsInIteration) << currentIteration << ".vtu";
+    Vtk::addParallelPiece(timestepFile, pieceName.str());
   }
 
-  timestepFile << "  </PUnstructuredGrid>\n";
-  timestepFile << "</VTKFile>\n";
-
+  Vtk::endFile(timestepFile, Vtk::GridType::ParallelUnstructured);
   timestepFile.close();
 }
 
@@ -369,35 +380,34 @@ void ParallelVtkWriter::createRanksPvtuFile(
   }
   const auto &globalBoxMin = decomposition.getGlobalBoxMin();
   const auto &globalBoxMax = decomposition.getGlobalBoxMax();
-  timestepFile << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?>\n";
-  timestepFile << "<VTKFile byte_order=\"LittleEndian\" type=\"PUnstructuredGrid\" version=\"0.1\">\n";
-  timestepFile << "  <PUnstructuredGrid GhostLevel=\"0\">\n";
-  timestepFile << "    <PPointData/>\n";
-  timestepFile << "    <PCellData>\n";
-  timestepFile << "      <PDataArray type=\"Int32\" Name=\"DomainId\" />\n";
+  Vtk::beginFile(timestepFile, Vtk::GridType::ParallelUnstructured);
+  Vtk::addEmptySection(timestepFile, Vtk::Section::ParallelPointData);
+  Vtk::beginSection(timestepFile, Vtk::Section::ParallelCellData);
+  Vtk::addParallelDataArray(timestepFile, Vtk::DataType::Int32, "DomainId", 1, "ascii");
 
   // General configuration options
-  timestepFile << "      <PDataArray type=\"Float32\" Name=\"CellSizeFactor\" />\n";
-  timestepFile << "      <PDataArray type=\"Int32\" Name=\"Container\" />\n";
+  Vtk::addParallelDataArray(timestepFile, Vtk::DataType::Float32, "CellSizeFactor", 1, "ascii");
+  Vtk::addParallelDataArray(timestepFile, Vtk::DataType::Int32, "Container", 1, "ascii");
 
   // Pairwise configuration
   if (interactionTypes.find(autopas::InteractionTypeOption::pairwise) != interactionTypes.end()) {
-    timestepFile << "      <PDataArray type=\"Int32\" Name=\"DataLayout\" />\n";
-    timestepFile << "      <PDataArray type=\"Int32\" Name=\"LoadEstimator\" />\n";
-    timestepFile << "      <PDataArray type=\"Int32\" Name=\"Traversal\" />\n";
-    timestepFile << "      <PDataArray type=\"Int32\" Name=\"Newton3\" />\n";
+    Vtk::addParallelDataArray(timestepFile, Vtk::DataType::Int32, "DataLayout", 1, "ascii");
+    Vtk::addParallelDataArray(timestepFile, Vtk::DataType::Int32, "LoadEstimator", 1, "ascii");
+    Vtk::addParallelDataArray(timestepFile, Vtk::DataType::Int32, "Traversal", 1, "ascii");
+    Vtk::addParallelDataArray(timestepFile, Vtk::DataType::Int32, "Newton3", 1, "ascii");
   }
 
   // Triwise configuration
   if (interactionTypes.find(autopas::InteractionTypeOption::triwise) != interactionTypes.end()) {
-    timestepFile << "      <PDataArray type=\"Int32\" Name=\"DataLayout-3B\" />\n";
-    timestepFile << "      <PDataArray type=\"Int32\" Name=\"Traversal-3B\" />\n";
-    timestepFile << "      <PDataArray type=\"Int32\" Name=\"Newton3-3B\" />\n";
+    Vtk::addParallelDataArray(timestepFile, Vtk::DataType::Int32, "DataLayout-3B", 1, "ascii");
+    Vtk::addParallelDataArray(timestepFile, Vtk::DataType::Int32, "Traversal-3B", 1, "ascii");
+    Vtk::addParallelDataArray(timestepFile, Vtk::DataType::Int32, "Newton-3B", 1, "ascii");
   }
 
-  timestepFile << "      <PDataArray type=\"Int32\" Name=\"Rank\" />\n";
-  timestepFile << "    </PCellData>\n";
-  timestepFile << "    <PPoints>\n";
+  Vtk::addParallelDataArray(timestepFile, Vtk::DataType::Int32, "Rank", 1, "ascii");
+  Vtk::endSection(timestepFile, Vtk::Section::ParallelCellData);
+
+  Vtk::beginSection(timestepFile, Vtk::Section::ParallelPoints);
   timestepFile << "      <DataArray NumberOfComponents=\"3\" format=\"ascii\" type=\"Float32\">\n";
   timestepFile << "        " << globalBoxMin[0] << " " << globalBoxMin[1] << " " << globalBoxMin[2] << "\n";
   timestepFile << "        " << globalBoxMax[0] << " " << globalBoxMin[1] << " " << globalBoxMin[2] << "\n";
@@ -408,17 +418,16 @@ void ParallelVtkWriter::createRanksPvtuFile(
   timestepFile << "        " << globalBoxMin[0] << " " << globalBoxMax[1] << " " << globalBoxMax[2] << "\n";
   timestepFile << "        " << globalBoxMax[0] << " " << globalBoxMax[1] << " " << globalBoxMax[2] << "\n";
   timestepFile << "      </DataArray>\n";
-  timestepFile << "    </PPoints>\n";
+  Vtk::endSection(timestepFile, Vtk::Section::ParallelPoints);
 
   for (int i = 0; i < _numberOfRanks; ++i) {
-    timestepFile << "    <Piece "
-                 << "Source=\"./data/" << _sessionName << "_Ranks_" << i << "_" << std::setfill('0')
-                 << std::setw(_maximumNumberOfDigitsInIteration) << currentIteration << ".vtu\"/>\n";
+    std::stringstream pieceName;
+    pieceName << "./data/" << _sessionName << "_Ranks_" << i << "_" << std::setfill('0')
+              << std::setw(_maximumNumberOfDigitsInIteration) << currentIteration << ".vtu";
+    Vtk::addParallelPiece(timestepFile, pieceName.str());
   }
 
-  timestepFile << "  </PUnstructuredGrid>\n";
-  timestepFile << "</VTKFile>\n";
-
+  Vtk::endFile(timestepFile, Vtk::GridType::ParallelUnstructured);
   timestepFile.close();
 }
 
