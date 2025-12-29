@@ -43,14 +43,18 @@ ParallelVtkWriter::ParallelVtkWriter(std::string sessionName, const std::string 
   _iteratorBehavior = autopas::IteratorBehavior::owned;
 }
 
-void ParallelVtkWriter::recordTimestep(size_t currentIteration, const autopas::AutoPas<ParticleType> &autoPasContainer,
-                                       const RegularGridDecomposition &decomposition) const {
-  recordParticleStates(currentIteration, autoPasContainer);
+void ParallelVtkWriter::recordTimestep(
+    size_t currentIteration,
+    const autopas::AutoPas<ParticleType> &autoPasContainer,
+    const ParticlePropertiesLibraryType &particlePropertiesLib,
+    const RegularGridDecomposition &decomposition) const
+{
+  recordParticleStates(currentIteration, autoPasContainer, particlePropertiesLib);
   const auto currentConfig = autoPasContainer.getCurrentConfigs();
   recordDomainSubdivision(currentIteration, currentConfig, decomposition);
 }
 
-void ParallelVtkWriter::writeHeader(std::string filename, std::ofstream &timestepFile)  const {
+void ParallelVtkWriter::writeHeader(std::string filename, std::ofstream &timestepFile) const {
   timestepFile << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?>\n";
   // .pvtu extension uses P-prefix
   if (filename.substr(filename.length() - 5) == ".pvtu") {
@@ -62,7 +66,7 @@ void ParallelVtkWriter::writeHeader(std::string filename, std::ofstream &timeste
   }
 }
 
-void ParallelVtkWriter::writeFooter(std::string filename, std::ofstream &timestepFile)  const {
+void ParallelVtkWriter::writeFooter(std::string filename, std::ofstream &timestepFile) const {
   // .pvtu extension uses P-prefix
   if (filename.substr(filename.length() - 5) == ".pvtu") {
     timestepFile << "  </PUnstructuredGrid>\n";
@@ -72,13 +76,36 @@ void ParallelVtkWriter::writeFooter(std::string filename, std::ofstream &timeste
   timestepFile << "</VTKFile>\n";
 }
 
+template<std::size_t N>
+void ParallelVtkWriter::writeDataArray(
+  std::ofstream &timestepFile,
+  const std::string &arrayName,
+  const std::vector<std::array<double, N>> &arrays
+) const {
+  timestepFile << "        <DataArray Name=\""
+               << arrayName
+               << "\" NumberOfComponents=\""
+               << N
+               << "\" format=\"ascii\" type=\"Float64\">\n";
+  for (const auto& array : arrays) {
+    timestepFile << "       ";
+    for (std::size_t i = 0; i < N; i++) {
+      timestepFile << " " << array[i];
+    }
+    timestepFile << "\n";
+  }
+  timestepFile << "        </DataArray>\n";
+}
+
 /**
  * @todo: Currently this function runs over all the particles for each property separately.
  * This can be improved by using multiple string streams (one for each property).
  * The streams can be combined to a single output stream after iterating over the particles, once.
  */
 void ParallelVtkWriter::recordParticleStates(size_t currentIteration,
-                                             const autopas::AutoPas<ParticleType> &autoPasContainer) const {
+                                             const autopas::AutoPas<ParticleType> &autoPasContainer,
+                                             const ParticlePropertiesLibraryType &pplib) const {
+  // TODO: modularize with add_dataarray etc.
   if (_mpiRank == 0) {
     createParticlesPvtuFile(currentIteration);
   }
@@ -99,50 +126,35 @@ void ParallelVtkWriter::recordParticleStates(size_t currentIteration,
   timestepFile << "    <Piece NumberOfCells=\"0\" NumberOfPoints=\"" << numberOfParticles << "\">\n";
   timestepFile << "      <PointData>\n";
 
-  // print velocities
-  timestepFile
-      << "        <DataArray Name=\"velocities\" NumberOfComponents=\"3\" format=\"ascii\" type=\"Float64\">\n";
+  // print velocities (since we already iterate here, we can compute the kinetic energy of particles)
+  std::vector<std::array<double, 1>> ke = {};
+  std::vector<std::array<double, 3>> velocities = {};
+  std::vector<std::array<double, 3>> forces= {};
+  std::vector<std::array<double, 3>> positions = {};
+
   for (auto particle = autoPasContainer.begin(_iteratorBehavior); particle.isValid(); ++particle) {
+    // To print some particles
+    //std::cout << "-- Particle --\n"
+              //<< particle->toString()
+              //<< "----" << std::endl;
     const auto v = particle->getV();
-    timestepFile << "        " << v[0] << " " << v[1] << " " << v[2] << "\n";
-  }
-  timestepFile << "        </DataArray>\n";
-
-  // print forces
-  timestepFile << "        <DataArray Name=\"forces\" NumberOfComponents=\"3\" format=\"ascii\" type=\"Float64\">\n";
-  for (auto particle = autoPasContainer.begin(_iteratorBehavior); particle.isValid(); ++particle) {
     const auto f = particle->getF();
-    timestepFile << "        " << f[0] << " " << f[1] << " " << f[2] << "\n";
-  }
-  timestepFile << "        </DataArray>\n";
+    const auto p = particle->getR();
 
-#if MD_FLEXIBLE_MODE == MULTISITE
-  // print quaternions
-  timestepFile
-      << "        <DataArray Name=\"quaternions\" NumberOfComponents=\"4\" format=\"ascii\" type=\"Float64\">\n";
-  for (auto particle = autoPasContainer.begin(_iteratorBehavior); particle.isValid(); ++particle) {
-    const auto q = particle->getQuaternion();
-    timestepFile << "        " << q[0] << " " << q[1] << " " << q[2] << " " << q[3] << "\n";
-  }
-  timestepFile << "        </DataArray>\n";
+    velocities.push_back(v);
+    forces.push_back(f);
+    positions.push_back(p);
 
-  // print angular velocities
-  timestepFile
-      << "        <DataArray Name=\"angularVelocities\" NumberOfComponents=\"3\" format=\"ascii\" type=\"Float64\">\n";
-  for (auto particle = autoPasContainer.begin(_iteratorBehavior); particle.isValid(); ++particle) {
-    const auto angVel = particle->getAngularVel();
-    timestepFile << "        " << angVel[0] << " " << angVel[1] << " " << angVel[2] << "\n";
+    ke.push_back(
+      {0.5 * (pplib.getMolMass(particle->getTypeId()) * autopas::utils::ArrayMath::dot(v, v))}
+    );
   }
-  timestepFile << "        </DataArray>\n";
 
-  // print torques
-  timestepFile << "        <DataArray Name=\"torques\" NumberOfComponents=\"3\" format=\"ascii\" type=\"Float64\">\n";
-  for (auto particle = autoPasContainer.begin(_iteratorBehavior); particle.isValid(); ++particle) {
-    const auto torque = particle->getTorque();
-    timestepFile << "        " << torque[0] << " " << torque[1] << " " << torque[2] << "\n";
-  }
-  timestepFile << "        </DataArray>\n";
-#endif
+  // Write kinetic first
+  writeDataArray(timestepFile, "kinetic", ke);
+  writeDataArray(timestepFile, "velocities", velocities);
+  writeDataArray(timestepFile, "forces", forces);
+  writeDataArray(timestepFile, "positions", positions);
 
   // print type ids
   timestepFile << "        <DataArray Name=\"typeIds\" NumberOfComponents=\"1\" format=\"ascii\" type=\"Int32\">\n";
@@ -298,6 +310,8 @@ void ParallelVtkWriter::createParticlesPvtuFile(size_t currentIteration) const {
 
   writeHeader(filename.str(), timestepFile);
   timestepFile << "    <PPointData>\n";
+  timestepFile
+      << "      <PDataArray Name=\"kinetic\" NumberOfComponents=\"1\" format=\"ascii\" type=\"Float64\"/>\n";
   timestepFile
       << "      <PDataArray Name=\"velocities\" NumberOfComponents=\"3\" format=\"ascii\" type=\"Float64\"/>\n";
   timestepFile << "      <PDataArray Name=\"forces\" NumberOfComponents=\"3\" format=\"ascii\" type=\"Float64\"/>\n";
