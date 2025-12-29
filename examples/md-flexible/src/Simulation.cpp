@@ -204,6 +204,9 @@ Simulation::Simulation(const MDFlexConfig &configuration,
     // Set the simulation directly to the desired initial temperature.
     Thermostat::apply(*_autoPasContainer, *(_configuration.getParticlePropertiesLibrary()),
                       _configuration.initTemperature.value, std::numeric_limits<double>::max());
+  } else {
+    std::cout << "Brownian motion is really not enabled?" << std::endl;
+    exit(1);
   }
 
   _timers.initialization.stop();
@@ -221,12 +224,6 @@ void Simulation::finalize() {
 void Simulation::run() {
   _timers.simulate.start();
   while (needsMoreIterations()) {
-    if (_createVtkFiles and _iteration % _configuration.vtkWriteFrequency.value == 0) {
-      _timers.vtk.start();
-      _vtkWriter->recordTimestep(_iteration, *_autoPasContainer, *_domainDecomposition);
-      _timers.vtk.stop();
-    }
-
     _timers.computationalLoad.start();
     if (_configuration.deltaT.value != 0 and not _simulationIsPaused) {
       updatePositionsAndResetForces();
@@ -321,6 +318,16 @@ void Simulation::run() {
       ++_iteration;
     }
 
+    if (_createVtkFiles and _iteration % _configuration.vtkWriteFrequency.value == 0) {
+      _timers.vtk.start();
+      _vtkWriter->recordTimestep(
+        _iteration, *_autoPasContainer, *(_configuration.getParticlePropertiesLibrary()), *_domainDecomposition
+      );
+//*_configuration.getParticlePropertiesLibrary()
+      _timers.vtk.stop();
+    }
+
+
     if (autopas::Logger::get()->level() <= autopas::Logger::LogLevel::debug) {
       std::cout << "Current Memory usage on rank " << _domainDecomposition->getDomainIndex() << ": "
                 << autopas::memoryProfiler::currentMemoryUsage() << " kB\n";
@@ -337,8 +344,13 @@ void Simulation::run() {
 
   // Record last state of simulation.
   if (_createVtkFiles) {
-    _vtkWriter->recordTimestep(_iteration, *_autoPasContainer, *_domainDecomposition);
+    _vtkWriter->recordTimestep(
+      _iteration, *_autoPasContainer, *(_configuration.getParticlePropertiesLibrary()), *_domainDecomposition
+    );
   }
+
+  this->saveToCSV(this->potentials, "potentials.csv");
+  this->saveToCSV(this->virials, "virials.csv");
 }
 
 std::tuple<size_t, bool> Simulation::estimateNumberOfIterations() const {
@@ -486,6 +498,9 @@ void Simulation::updateInteractionForces() {
   }
   // Calculate triwise forces
   if (_configuration.getInteractionTypes().count(autopas::InteractionTypeOption::triwise)) {
+    std::cout << "Equilibration scenarios must be triwise!" << std::endl;
+    exit(1);
+
     _timers.forceUpdateTriwise.start();
     _currentIterationIsTuningIteration |= calculateTriwiseForces();
     timeIteration += _timers.forceUpdateTriwise.stop();
@@ -544,14 +559,27 @@ long Simulation::accumulateTime(const long &time) {
 }
 
 bool Simulation::calculatePairwiseForces() {
-  const auto wasTuningIteration = applyWithChosenFunctor<bool>([&](auto &&functor) {
-    auto isTuningIteration = _autoPasContainer->computeInteractions(&functor);
-#ifdef MD_FLEXIBLE_CALC_GLOBALS
-    _totalPotentialEnergy += functor.getPotentialEnergy();
-    _totalVirialSum += functor.getVirial();
-#endif
-    return isTuningIteration;
-  });
+  //const auto wasTuningIteration = applyWithChosenFunctor<bool>([&](auto &&functor) {
+    //auto isTuningIteration = _autoPasContainer->computeInteractions(&functor);
+//#ifdef MD_FLEXIBLE_CALC_GLOBALS
+    //_totalPotentialEnergy += functor.getPotentialEnergy();
+    //_totalVirialSum += functor.getVirial();
+//#endif
+    //return isTuningIteration;
+  //});
+  const auto wasTuningIteration =
+    //applyWithChosenFunctor<bool>([&](auto &&functor) { return _autoPasContainer->computeInteractions(&functor); });
+    applyWithChosenFunctor<bool>([&](auto &&functor) {
+      const auto& still_tuning = _autoPasContainer->computeInteractions(&functor);
+      const double potential_energy = functor.getPotentialEnergy();
+      const double virial = functor.getVirial();
+
+      this->potentials.push_back(potential_energy);
+      this->virials.push_back(virial);
+      //std::cout << "potential --> " << potential_energy << std::endl;
+      return still_tuning;
+      //return _autoPasContainer->computeInteractions(&functor);
+    });
   return wasTuningIteration;
 }
 

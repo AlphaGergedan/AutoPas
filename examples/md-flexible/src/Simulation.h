@@ -70,6 +70,22 @@ class Simulation {
    */
   void finalize();
 
+  std::vector<double> potentials;
+  std::vector<double> virials;
+
+  void saveToCSV(const std::vector<double> &arr, const std::string& filename) {
+    std::ofstream file(filename);
+    if (!file) {
+      std::cout << "Cannot find file to log values, value.csv, probably potential or virial" << std::endl;
+    }
+    for (size_t i = 0; i < this->potentials.size(); i++) {
+      file << arr[i];
+      if (i < arr.size() - 1) file << ",";
+    }
+    file << "\n";
+    file.close();
+  }
+
  protected:
   /**
    * Stores the configuration used for the simulation.
